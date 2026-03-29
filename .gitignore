@@ -1,0 +1,15 @@
+# Ignore processed data
+data/processed/
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore virtual environment
+.venv/
+
+# Optional: Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Optional: system files
+.DS_Store
