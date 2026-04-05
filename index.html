@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delhi-NCR AQI Predictor</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0a0b0d;
+    --bg2:      #111318;
+    --bg3:      #181c24;
+    --border:   rgba(255,255,255,0.07);
+    --border2:  rgba(255,255,255,0.13);
+    --text:     #e8eaf0;
+    --muted:    #6b7280;
+    --accent:   #f0a500;
+    --accent2:  #e05c1a;
+
+    --good:     #22c55e;
+    --moderate: #eab308;
+    --sensitive:#f97316;
+    --unhealthy:#ef4444;
+    --very-un:  #a855f7;
+    --hazardous:#be123c;
+
+    --font-display: 'Syne', sans-serif;
+    --font-mono:    'JetBrains Mono', monospace;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-display);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── noise texture overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+    opacity: 0.025;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── layout ── */
+  .wrap {
+    position: relative; z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px 80px;
+  }
+
+  /* ── header ── */
+  header {
+    padding: 48px 0 40px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 48px;
+  }
+  .logo-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: .16em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  h1 {
+    font-size: clamp(28px, 5vw, 44px);
+    font-weight: 800;
+    letter-spacing: -.02em;
+    line-height: 1;
+    color: var(--text);
+  }
+  h1 span { color: var(--accent); }
+  .header-meta {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    text-align: right;
+    line-height: 1.8;
+  }
+
+  /* ── main grid ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 820px) {
+    .main-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── section labels ── */
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── form card ── */
+  .form-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+  }
+
+  .input-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 560px) {
+    .input-grid { grid-template-columns: 1fr; }
+  }
+  .input-group.full { grid-column: 1 / -1; }
+
+  .input-group label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 7px;
+  }
+  .input-group label .unit {
+    color: var(--border2);
+    font-weight: 300;
+    margin-left: 4px;
+  }
+
+  .input-group input,
+  .input-group select {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 400;
+    padding: 11px 14px;
+    outline: none;
+    transition: border-color .15s, background .15s;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  .input-group select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+    cursor: pointer;
+  }
+  .input-group select option { background: #1a1d24; }
+  .input-group input:focus,
+  .input-group select:focus {
+    border-color: var(--accent);
+    background: #14171e;
+  }
+  .input-group input::placeholder { color: #374151; }
+
+  /* ── time row ── */
+  .time-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 560px) {
+    .time-row { grid-template-columns: 1fr 1fr; }
+  }
+
+  /* ── predict button ── */
+  .btn-predict {
+    width: 100%;
+    background: var(--accent);
+    color: #0a0b0d;
+    border: none;
+    border-radius: 10px;
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    padding: 14px 24px;
+    cursor: pointer;
+    transition: background .15s, transform .1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .btn-predict:hover { background: #ffb820; }
+  .btn-predict:active { transform: scale(0.985); }
+  .btn-predict svg { width: 18px; height: 18px; }
+
+  /* ── result panel ── */
+  .result-panel {
+    position: sticky;
+    top: 24px;
+  }
+
+  .aqi-display {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    text-align: center;
+    margin-bottom: 16px;
+    transition: border-color .4s;
+  }
+  .aqi-display.has-result { border-color: var(--result-color, var(--border2)); }
+
+  .aqi-idle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 24px 0;
+  }
+  .aqi-idle svg { opacity: .18; }
+  .aqi-idle p {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .aqi-result { display: none; }
+  .aqi-result.show { display: block; }
+  .aqi-idle.hide { display: none; }
+
+  .result-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .result-number {
+    font-size: 88px;
+    font-weight: 800;
+    letter-spacing: -.04em;
+    line-height: 1;
+    margin-bottom: 4px;
+    transition: color .4s;
+  }
+  .result-category {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: .01em;
+    margin-bottom: 20px;
+    transition: color .4s;
+  }
+
+  /* AQI gauge bar */
+  .gauge-track {
+    height: 6px;
+    border-radius: 99px;
+    background: linear-gradient(to right,
+      #22c55e 0%, #22c55e 10%,
+      #eab308 10%, #eab308 20%,
+      #f97316 20%, #f97316 35%,
+      #ef4444 35%, #ef4444 55%,
+      #a855f7 55%, #a855f7 75%,
+      #be123c 75%, #be123c 100%
+    );
+    position: relative;
+    margin-bottom: 20px;
+  }
+  .gauge-needle {
+    position: absolute;
+    top: 50%;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: #fff;
+    transform: translate(-50%, -50%);
+    transition: left .6s cubic-bezier(.34,1.56,.64,1);
+    box-shadow: 0 0 0 2px var(--bg2);
+  }
+
+  /* health advice */
+  .health-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: left;
+  }
+  .health-card .hc-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .health-card .hc-text {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text);
+    line-height: 1.6;
+    opacity: .85;
+  }
+
+  /* ── stats strip ── */
+  .stats-strip {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .stat-card .sc-val {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    margin-bottom: 2px;
+  }
+  .stat-card .sc-lbl {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+
+  /* ── category legend ── */
+  .legend-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px 24px;
+    margin-top: 16px;
+  }
+  .legend-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .legend-row:last-child { border-bottom: none; }
+  .legend-row .lr-left { display: flex; align-items: center; gap: 10px; }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .legend-row .lr-name { font-weight: 600; }
+  .legend-row .lr-range {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* ── loading spinner ── */
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid rgba(10,11,13,.3);
+    border-top-color: #0a0b0d;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    display: none;
+  }
+  .btn-predict.loading .spinner { display: block; }
+  .btn-predict.loading .btn-label { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── validation ── */
+  .input-group input.err,
+  .input-group select.err {
+    border-color: #ef4444;
+  }
+  .err-msg {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: #ef4444;
+    margin-top: 4px;
+    display: none;
+  }
+  .input-group.has-err .err-msg { display: block; }
+
+  /* ── entrance animations ── */
+  .fade-up {
+    opacity: 0;
+    transform: translateY(16px);
+    animation: fadeUp .5s ease forwards;
+  }
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .form-card { animation: fadeUp .5s .1s ease both; }
+  .result-panel { animation: fadeUp .5s .2s ease both; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo-block">
+      <h1>Delhi-NCR<br><span>AQI</span> Predictor</h1>
+    </div>
+    <div class="header-meta">
+      Weather &amp; temporal<br>features only<br>No sensor data required
+    </div>
+  </header>
+
+  <div class="main-grid">
+
+    <!-- ── INPUT FORM ── -->
+    <div class="form-card">
+
+      <p class="section-label">Location</p>
+      <div class="input-grid" style="margin-bottom:20px;">
+        <div class="input-group">
+          <label>City</label>
+          <select id="city">
+            <option value="">Select city…</option>
+            <option value="0">Delhi</option>
+            <option value="1">Faridabad</option>
+            <option value="2">Ghaziabad</option>
+            <option value="3">Gurugram</option>
+            <option value="4">Noida</option>
+          </select>
+          <span class="err-msg">Required</span>
+        </div>
+        <div class="input-group">
+          <label>Station</label>
+          <select id="station">
+            <option value="">Select station…</option>
+          </select>
+          <span class="err-msg">Required</span>
+        </div>
+      </div>
+
+      <p class="section-label">Weather Conditions</p>
+      <div class="input-grid" style="margin-bottom:20px;">
+        <div class="input-group">
+          <label>Temperature <span class="unit">°C</span></label>
+          <input type="number" id="temperature" placeholder="e.g. 22" step="0.1" min="-5" max="50">
+          <span class="err-msg">Enter –5 to 50°C</span>
+        </div>
+        <div class="input-group">
+          <label>Humidity <span class="unit">%</span></label>
+          <input type="number" id="humidity" placeholder="e.g. 65" step="1" min="0" max="100">
+          <span class="err-msg">Enter 0–100%</span>
+        </div>
+        <div class="input-group">
+          <label>Wind Speed <span class="unit">km/h</span></label>
+          <input type="number" id="wind_speed" placeholder="e.g. 12" step="0.1" min="0" max="100">
+          <span class="err-msg">Enter 0–100 km/h</span>
+        </div>
+      </div>
+
+      <p class="section-label">Date &amp; Time</p>
+      <div class="input-grid" style="margin-bottom:16px;grid-template-columns:1fr 1fr 1fr;">
+        <div class="input-group">
+          <label>Day <span class="unit">1–31</span></label>
+          <input type="number" id="day" placeholder="e.g. 15" min="1" max="31" step="1">
+          <span class="err-msg">Enter 1–31</span>
+        </div>
+        <div class="input-group">
+          <label>Hour <span class="unit">0–23</span></label>
+          <input type="number" id="hour" placeholder="e.g. 14" min="0" max="23" step="1">
+          <span class="err-msg">Enter 0–23</span>
+        </div>
+        <div class="input-group">
+          <label>Month <span class="unit">season auto-set</span></label>
+          <select id="month" onchange="deriveSeason()">
+            <option value="">Month…</option>
+            <option value="1">January — Winter</option>
+            <option value="2">February — Winter</option>
+            <option value="3">March — Summer</option>
+            <option value="4">April — Summer</option>
+            <option value="5">May — Summer</option>
+            <option value="6">June — Summer</option>
+            <option value="7">July — Monsoon</option>
+            <option value="8">August — Monsoon</option>
+            <option value="9">September — Monsoon</option>
+            <option value="10">October — Post-monsoon</option>
+            <option value="11">November — Post-monsoon</option>
+            <option value="12">December — Winter</option>
+          </select>
+          <span class="err-msg">Required</span>
+        </div>
+      </div>
+
+      <div class="input-grid">
+        <div class="input-group">
+          <label>Day of Week <span class="unit">weekend auto-set</span></label>
+          <select id="day_of_week" onchange="deriveWeekend()">
+            <option value="">Day…</option>
+            <option value="1">Monday</option>
+            <option value="2">Tuesday</option>
+            <option value="3">Wednesday</option>
+            <option value="4">Thursday</option>
+            <option value="5">Friday</option>
+            <option value="6">Saturday</option>
+            <option value="7">Sunday</option>
+          </select>
+          <span class="err-msg">Required</span>
+        </div>
+        <div class="input-group">
+          <label>Season <span class="unit">derived from month</span></label>
+          <input type="text" id="season_display" readonly placeholder="Set month first…" style="cursor:default;opacity:.6;">
+          <input type="hidden" id="season">
+        </div>
+      </div>
+      <input type="hidden" id="is_weekend" value="0">
+      <input type="hidden" id="year" value="2025">
+
+      <button class="btn-predict" id="predictBtn" onclick="predictAQI()">
+        <span class="btn-label" style="display:flex;align-items:center;gap:8px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+          Predict AQI
+        </span>
+        <div class="spinner"></div>
+      </button>
+    </div>
+
+    <!-- ── RESULT PANEL ── -->
+    <div class="result-panel">
+
+      <p class="section-label">Prediction</p>
+      <div class="aqi-display" id="aqiDisplay">
+        <div class="aqi-idle" id="idleState">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+            <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+          </svg>
+          <p>Fill in the conditions<br>and click Predict AQI</p>
+        </div>
+        <div class="aqi-result" id="resultState">
+          <p class="result-label">Predicted AQI</p>
+          <div class="result-number" id="resultNumber">—</div>
+          <div class="result-category" id="resultCategory">—</div>
+          <div class="gauge-track">
+            <div class="gauge-needle" id="gaugeNeedle" style="left:0%"></div>
+          </div>
+          <div class="health-card">
+            <p class="hc-title">Health Advisory</p>
+            <p class="hc-text" id="healthText">—</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="stats-strip" id="statsStrip" style="display:none;">
+        <div class="stat-card">
+          <div class="sc-val" id="statModel">XGB</div>
+          <div class="sc-lbl">Model</div>
+        </div>
+        <div class="stat-card">
+          <div class="sc-val">±23</div>
+          <div class="sc-lbl">Avg Error</div>
+        </div>
+        <div class="stat-card">
+          <div class="sc-val">0.97</div>
+          <div class="sc-lbl">R² Score</div>
+        </div>
+      </div>
+
+      <p class="section-label" style="margin-top:24px;">AQI Scale</p>
+      <div class="legend-card">
+        <div class="legend-row">
+          <div class="lr-left">
+            <div class="legend-dot" style="background:#22c55e"></div>
+            <span class="lr-name">Good</span>
+          </div>
+          <span class="lr-range">0 – 50</span>
+        </div>
+        <div class="legend-row">
+          <div class="lr-left">
+            <div class="legend-dot" style="background:#eab308"></div>
+            <span class="lr-name">Satisfactory</span>
+          </div>
+          <span class="lr-range">51 – 100</span>
+        </div>
+        <div class="legend-row">
+          <div class="lr-left">
+            <div class="legend-dot" style="background:#f97316"></div>
+            <span class="lr-name">Moderately polluted</span>
+          </div>
+          <span class="lr-range">101 – 200</span>
+        </div>
+        <div class="legend-row">
+          <div class="lr-left">
+            <div class="legend-dot" style="background:#ef4444"></div>
+            <span class="lr-name">Poor</span>
+          </div>
+          <span class="lr-range">201 – 300</span>
+        </div>
+        <div class="legend-row">
+          <div class="lr-left">
+            <div class="legend-dot" style="background:#a855f7"></div>
+            <span class="lr-name">Very poor</span>
+          </div>
+          <span class="lr-range">301 – 400</span>
+        </div>
+        <div class="legend-row">
+          <div class="lr-left">
+            <div class="legend-dot" style="background:#be123c"></div>
+            <span class="lr-name">Severe</span>
+          </div>
+          <span class="lr-range">401 – 500</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── Station data keyed by city value ── */
+const STATIONS = {
+  '0': [ /* Delhi */
+    ['0','Anand Vihar'],['1','Ashok Vihar'],['2','Bawana'],
+    ['3','Burari Crossing'],['4','DTU'],['5','Dwarka'],
+    ['6','IGI Airport'],['7','ITO'],['8','Jahangirpuri'],
+    ['9','Mundka'],['10','Narela'],['11','Nehru Nagar'],
+    ['12','Okhla Phase 2'],['13','Patparganj'],['14','Punjabi Bagh'],
+    ['15','R K Puram'],['16','Rohini'],['17','Shadipur'],['18','Wazirpur']
+  ],
+  '1': [['19','Sector 11'],['20','Sector 16A'],['21','Sector 30']],
+  '2': [['22','Loni']],
+  '3': [['23','Sector 51'],['24','Vikas Sadan']],
+  '4': [['25','Sector 1'],['26','Sector 62']]
+};
+
+const SEASON_MAP = {
+  '1':'monsoon','2':'summer','3':'post_monsoon','4':'winter'
+};
+
+/* ── Populate stations on city change ── */
+document.getElementById('city').addEventListener('change', function() {
+  const stationSel = document.getElementById('station');
+  stationSel.innerHTML = '<option value="">Select station…</option>';
+  const opts = STATIONS[this.value] || [];
+  opts.forEach(([val, name]) => {
+    const o = document.createElement('option');
+    o.value = val; o.textContent = name;
+    stationSel.appendChild(o);
+  });
+});
+
+/* ── Derive season from month ── */
+function deriveSeason() {
+  const m = +document.getElementById('month').value;
+  if (!m) return;
+  let seasonVal, seasonName;
+  if (m >= 7 && m <= 9)       { seasonVal = 1; seasonName = 'Monsoon'; }
+  else if (m >= 3 && m <= 6)  { seasonVal = 2; seasonName = 'Summer'; }
+  else if (m === 10 || m === 11) { seasonVal = 3; seasonName = 'Post-monsoon'; }
+  else                         { seasonVal = 4; seasonName = 'Winter'; }
+  document.getElementById('season').value = seasonVal;
+  document.getElementById('season_display').value = seasonName;
+}
+
+/* ── Derive is_weekend from day of week ── */
+function deriveWeekend() {
+  const dow = +document.getElementById('day_of_week').value;
+  document.getElementById('is_weekend').value = (dow === 6 || dow === 7) ? 1 : 0;
+}
+
+/* ── AQI category + colours ── */
+function classify(aqi) {
+  if (aqi <= 50)  return { cat:'Good',                 color:'#22c55e', pct: aqi/500*100,
+    advice:'Air quality is satisfactory. Enjoy outdoor activities freely.' };
+  if (aqi <= 100) return { cat:'Satisfactory',         color:'#eab308', pct: aqi/500*100,
+    advice:'Acceptable air quality. Unusually sensitive individuals may experience minor effects.' };
+  if (aqi <= 200) return { cat:'Moderately Polluted',  color:'#f97316', pct: aqi/500*100,
+    advice:'Sensitive groups (children, elderly, respiratory patients) should reduce outdoor exertion.' };
+  if (aqi <= 300) return { cat:'Poor',                 color:'#ef4444', pct: aqi/500*100,
+    advice:'Everyone may begin to experience health effects. Sensitive groups should avoid prolonged outdoor activity.' };
+  if (aqi <= 400) return { cat:'Very Poor',            color:'#a855f7', pct: aqi/500*100,
+    advice:'Health alert — everyone may experience serious effects. Avoid outdoor activity. Use N95 masks if going outside.' };
+  return            { cat:'Severe',                    color:'#be123c', pct: 98,
+    advice:'Health emergency. Stay indoors, keep windows closed, use air purifiers. Seek medical attention if experiencing symptoms.' };
+}
+
+/* ── Validation ── */
+function validate() {
+  const fields = [
+    { id:'city',        check: v => v !== '',    msg:'Required' },
+    { id:'station',     check: v => v !== '',    msg:'Required' },
+    { id:'temperature', check: v => v !== '' && +v >= -5 && +v <= 50, msg:'Enter –5 to 50°C' },
+    { id:'humidity',    check: v => v !== '' && +v >= 0 && +v <= 100, msg:'Enter 0–100%' },
+    { id:'wind_speed',  check: v => v !== '' && +v >= 0 && +v <= 100, msg:'Enter 0–100 km/h' },
+    { id:'day',         check: v => v !== '' && +v >= 1 && +v <= 31,  msg:'Enter 1–31' },
+    { id:'hour',        check: v => v !== '' && +v >= 0 && +v <= 23,  msg:'Enter 0–23' },
+    { id:'month',       check: v => v !== '',    msg:'Required' },
+    { id:'day_of_week', check: v => v !== '',    msg:'Required' },
+  ];
+  let valid = true;
+  fields.forEach(f => {
+    const el = document.getElementById(f.id);
+    const group = el.closest('.input-group');
+    if (!f.check(el.value)) {
+      el.classList.add('err');
+      group.classList.add('has-err');
+      valid = false;
+    } else {
+      el.classList.remove('err');
+      group.classList.remove('has-err');
+    }
+  });
+  return valid;
+}
+
+/* ── Animated counter ── */
+function animateNumber(el, target, duration = 800) {
+  const start = performance.now();
+  const from = 0;
+  function step(now) {
+    const p = Math.min((now - start) / duration, 1);
+    const ease = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(from + (target - from) * ease);
+    if (p < 1) requestAnimationFrame(step);
+    else el.textContent = target;
+  }
+  requestAnimationFrame(step);
+}
+
+/* ── Main predict function ── */
+async function predictAQI() {
+  if (!validate()) return;
+
+  const btn = document.getElementById('predictBtn');
+  btn.classList.add('loading');
+
+  /* Collect features */
+  // Feature order must exactly match FEATURE_ORDER in app.py
+  const features = {
+    year:        +document.getElementById('year').value,        // hidden, always 2025
+    month:       +document.getElementById('month').value,
+    day:         +document.getElementById('day').value,         // day of month (1–31)
+    hour:        +document.getElementById('hour').value,
+    day_of_week: +document.getElementById('day_of_week').value,
+    is_weekend:  +document.getElementById('is_weekend').value,  // derived from day_of_week
+    season:      +document.getElementById('season').value,      // derived from month
+    city:        +document.getElementById('city').value,
+    station:     +document.getElementById('station').value,
+    temperature: +document.getElementById('temperature').value,
+    humidity:    +document.getElementById('humidity').value,
+    wind_speed:  +document.getElementById('wind_speed').value,
+  };
+
+  /* Simulate network latency (replace with real fetch) */
+  await new Promise(r => setTimeout(r, 700));
+
+  const resp = await fetch('http://localhost:5000/predict', {
+    method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify(features)
+  });
+  const { aqi } = await resp.json();
+
+  btn.classList.remove('loading');
+
+  /* Render result */
+  const info = classify(aqi);
+  const display = document.getElementById('aqiDisplay');
+  display.style.setProperty('--result-color', info.color);
+  display.classList.add('has-result');
+
+  document.getElementById('idleState').classList.add('hide');
+  const resultState = document.getElementById('resultState');
+  resultState.classList.add('show');
+
+  const numEl = document.getElementById('resultNumber');
+  numEl.style.color = info.color;
+  animateNumber(numEl, aqi);
+
+  const catEl = document.getElementById('resultCategory');
+  catEl.textContent = info.cat;
+  catEl.style.color = info.color;
+
+  document.getElementById('healthText').textContent = info.advice;
+  document.getElementById('gaugeNeedle').style.left = Math.min(97, info.pct) + '%';
+  document.getElementById('statsStrip').style.display = 'grid';
+}
+
+/* ── Clear errors on input ── */
+document.querySelectorAll('input, select').forEach(el => {
+  el.addEventListener('input', () => {
+    el.classList.remove('err');
+    el.closest('.input-group')?.classList.remove('has-err');
+  });
+});
+</script>
+</body>
+</html>
