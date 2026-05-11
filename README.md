@@ -51,7 +51,7 @@ model outputs the predicted AQI.
 | `aqi_category` | Derived directly from AQI — target leakage |
 | `pm25`, `pm10` | Primary CPCB AQI sub-index inputs — target leakage |
 | `no2`, `so2`, `co`, `o3` | Remaining CPCB sub-index inputs — target leakage |
-| `visibility` | Synthetically derived from pollutant levels in this dataset — acts as a proxy for PM, target leakage |
+| `visibility` | Derived from pollutant levels in this dataset — acts as a proxy for PM, target leakage |
 
 **Note on leakage:** India's CPCB AQI is computed as the maximum sub-index
 across all six pollutants (PM2.5, PM10, NO₂, SO₂, CO, O₃). Including any of
@@ -79,11 +79,6 @@ weather and seasonal patterns.
 is capped at 500 by the CPCB formula. Different levels of extreme pollution are
 indistinguishably mapped to the same target value, which reduces model accuracy
 at the upper end of the scale. This is an inherent limitation of the data source.
-
-**Synthetic dataset:** This dataset was generated rather than collected from live
-CPCB feeds. The visibility column was found to be derived from pollutant levels
-(correlation −0.86 with AQI) rather than being an independent meteorological
-observation, which is why it was excluded.
 
 ---
 
